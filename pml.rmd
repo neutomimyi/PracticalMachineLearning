@@ -1,0 +1,121 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Artem Studenikin"
+date: "Friday, July 24, 2015"
+output: html_document
+---
+
+###Summary
+In an experiment, 6 participants wearing accelerometers on the belt, forearm, 
+arm, and dumbell, were asked to perform barbell lifts correctly and incorrectly 
+in 5 different ways. The data from the accelerometers was recorded. The goal of 
+this project is to predict the manner in which the participants did the exercise. 
+Two predictive models are used to fit the data: regression tree and random 
+forest. These two models provided drastically different accuracies. Regression 
+tree model was able to give 58% accuracy and random forest provided 98% accuracy, 
+which makes random forest model much more suitable for this prediction task.
+
+
+####Data Loading
+Experiment data are stored in two CSV files.  
+The training data are available 
+here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)  
+The test data are available here: [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)  
+
+
+
+```{r, cache=TRUE }
+training <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+####Cleaning and preparing data sets
+To begin with, let's remove columns that have missing values both in training and 
+testing datasets.
+
+```{r}
+n <- apply(training, 2, function(x) all(!is.na(x)))
+training <- training[,n]
+n <- apply(testing, 2, function(x) all(!is.na(x)))
+testing <- testing[,n]
+```
+
+First seven attributes are not measures and can be discarded for the model. 
+
+```{r}
+training <- training[,-1:-7]
+testing <- testing[,-1:-7]
+```
+
+Last attribute in boh data sets is the outcome. Let's make sure the rest of the 
+attributes in the modified data sets are the same
+
+```{r}
+all(names(training)[-53]==names(testing)[-53])
+```
+
+There are `r nrow(training)` observations in the training data set. Let's split 
+it and use 60% for training purposes and 40% for testing.
+
+```{r}
+library(caret)
+library(rattle)
+set.seed(12321)
+inTrain <- createDataPartition(training$classe, .6)[[1]]
+trainSet <- training[inTrain,]
+testSet <- training[-inTrain,]
+```
+
+####Regression Tree model
+We have a classical classication problem. Let's first use regression tree model 
+and see how well it can predict outcomes.
+
+```{r}
+modelRPART <- train(classe ~ ., data=trainSet, method="rpart")
+modelRPART$finalModel
+fancyRpartPlot(modelRPART$finalModel)
+predictRPART <- predict(modelRPART, testSet)
+confusionMatrix(testSet$classe, predictRPART)
+```
+Regressino tree model provides accuracy of about 50%, which is on par with 
+chance. 
+
+####Random forest model
+Let's use Random Forest model and test whether it can provide better accuracy in 
+predicting outcome classe.
+
+```{r}
+modelRF <- train(classe ~ ., 
+                 data=trainSet, 
+                 method="rf",
+                 trControl=trainControl(method="cv", number=4))
+modelRF
+varImp(modelRF)
+predictRF <- predict(modelRF, testSet)
+cRF <- confusionMatrix(testSet$classe, predictRF)
+```
+Random Forest model provides far better accuracy then regression tree. 
+
+####In Sample and Out of Sample Error
+In sample error is the rate of error in the set used for training and out of 
+sample error is the rate of error in the set used for testing. Very high 
+accuracy achieved using Random Forest model `r cRF$overall[[1]]` means very low 
+out of sample error
+```{r}
+1-cRF$overall[[1]]
+```
+
+The in sample error will be even smaller. Predicting on the training set should 
+give accuracy of almost or full 100%. Let's test this hypothesis
+
+```{r}
+predictTrainRF <- predict(modelRF, trainSet)
+cTrainRF <- confusionMatrix(trainSet$classe, predictTrainRF)
+cTrainRF
+```
+
+As expected, in sample accuracy is `r cTrainRF$overall[[1]]`, which makes in 
+sample error rate equal:
+```{r}
+1 - cTrainRF$overall[[1]]
+```
